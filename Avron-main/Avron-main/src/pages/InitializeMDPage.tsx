@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Eye, EyeOff, User, Mail, Lock, Phone, Calendar, Upload, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, Eye, EyeOff, User, Mail, Lock, Phone, Calendar, Upload, CircleCheck as CheckCircle2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useRouter } from '../contexts/RouterContext';
 import { Spinner } from '../components/ui/Spinner';
