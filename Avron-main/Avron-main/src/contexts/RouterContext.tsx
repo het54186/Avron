@@ -3,7 +3,7 @@ import type { AppRoute } from '../types';
 
 interface RouterContextValue {
   route: AppRoute;
-  navigate: (to: AppRoute) => void;
+  navigate: (to: AppRoute | string) => void;
   goBack: () => void;
 }
 
@@ -14,8 +14,8 @@ export function RouterProvider({ children }: { children: React.ReactNode }) {
 
   const route = history[history.length - 1];
 
-  const navigate = useCallback((to: AppRoute) => {
-    setHistory(prev => [...prev, to]);
+  const navigate = useCallback((to: AppRoute | string) => {
+    setHistory(prev => [...prev, to as AppRoute]);
   }, []);
 
   const goBack = useCallback(() => {

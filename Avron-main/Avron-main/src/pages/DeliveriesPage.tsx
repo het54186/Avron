@@ -1,13 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Search, RefreshCw, Package, MapPin, User, CheckCircle2, XCircle } from 'lucide-react';
+import { Plus, Search, RefreshCw, Package } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotifications } from '../contexts/NotificationContext';
 import { Modal } from '../components/ui/Modal';
 import { Badge } from '../components/ui/Badge';
 import { Spinner } from '../components/ui/Spinner';
-import { formatDate } from '../lib/utils';
-import type { Delivery, DeliveryStatus, Profile } from '../types';
+import type { Delivery, DeliveryStatus } from '../types';
 
 const STATUS_CONFIG: Record<DeliveryStatus, { label: string; variant: 'neutral'|'info'|'warning'|'success'|'danger' }> = {
   created:    { label: 'Created',    variant: 'neutral' },
@@ -26,7 +25,7 @@ export function DeliveriesPage() {
   const { profile } = useAuth();
   const { addToast } = useNotifications();
   const [deliveries, setDeliveries] = useState<Delivery[]>([]);
-  const [staff, setStaff] = useState<Profile[]>([]);
+  const [staff, setStaff] = useState<{ id: string; full_name: string; employee_id: string | null }[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatus] = useState<DeliveryStatus | ''>('');
@@ -36,49 +35,54 @@ export function DeliveriesPage() {
   const [selectedStaff, setSelectedStaff] = useState('');
 
   const [form, setForm] = useState({
-    entity_type: 'General', entity_id: '', title: '', description: '',
-    from_location: 'Ground Floor Reception', to_location: '',
+    entity_type: 'General', entity_id: '', title: '',
+    from_location: '', to_location: '', description: '',
   });
 
   const fetch = useCallback(async () => {
     setLoading(true);
-    const [delRes, staffRes] = await Promise.all([
-      supabase.from('deliveries').select('*, assigned_profile:profiles!deliveries_assigned_to_fkey(*)').order('created_at', { ascending: false }).limit(100),
-      supabase.from('profiles').select('*').in('role', ['staff', 'maintenance_team']).eq('is_active', true),
-    ]);
-    setDeliveries(delRes.data ?? []);
-    setStaff(staffRes.data ?? []);
+    const { data: dData } = await supabase.from('deliveries').select('*').order('created_at', { ascending: false }).limit(100);
+    const { data: sData } = await supabase.from('profiles').select('id,full_name,employee_id').eq('is_active', true);
+    setDeliveries(dData ?? []);
+    setStaff(sData ?? []);
     setLoading(false);
   }, []);
 
   useEffect(() => { fetch(); }, [fetch]);
 
   const handleCreate = async () => {
-    if (!form.title.trim() || !form.to_location.trim()) {
-      addToast({ type: 'error', title: 'Required', message: 'Title and destination required.' });
+    if (!form.title.trim() || !form.from_location.trim() || !form.to_location.trim()) {
+      addToast({ type: 'error', title: 'Required', message: 'Title, from and to locations are required.' });
       return;
     }
     setSaving(true);
-    await supabase.from('deliveries').insert({
-      entity_type: form.entity_type.trim(),
-      entity_id: form.entity_id.trim() || null,
+    const { error } = await supabase.from('deliveries').insert({
+      entity_type: form.entity_type,
+      entity_id: form.entity_id || null,
       title: form.title.trim(),
-      description: form.description.trim() || null,
       from_location: form.from_location.trim(),
       to_location: form.to_location.trim(),
-      created_by: profile?.id,
+      description: form.description.trim() || null,
     });
-    addToast({ type: 'success', title: 'Delivery created', message: form.title });
     setSaving(false);
+    if (error) { addToast({ type: 'error', title: 'Error', message: error.message }); return; }
+    addToast({ type: 'success', title: 'Created', message: 'Delivery created.' });
     setCreate(false);
-    setForm({ entity_type: 'General', entity_id: '', title: '', description: '', from_location: 'Ground Floor Reception', to_location: '' });
+    setForm({ entity_type: 'General', entity_id: '', title: '', from_location: '', to_location: '', description: '' });
     fetch();
   };
 
   const assignStaff = async () => {
     if (!assignOpen || !selectedStaff) return;
-    await supabase.from('deliveries').update({ assigned_to: selectedStaff, status: 'assigned' }).eq('id', assignOpen.id);
-    addToast({ type: 'success', title: 'Assigned', message: 'Delivery assigned to staff' });
+    setSaving(true);
+    const { error } = await supabase.from('deliveries').update({
+      status: 'assigned',
+      assigned_to: selectedStaff,
+      assigned_at: new Date().toISOString(),
+    }).eq('id', assignOpen.id);
+    setSaving(false);
+    if (error) { addToast({ type: 'error', title: 'Error', message: error.message }); return; }
+    addToast({ type: 'success', title: 'Assigned', message: 'Delivery assigned to staff.' });
     setAssignOpen(null);
     setSelectedStaff('');
     fetch();
@@ -93,7 +97,7 @@ export function DeliveriesPage() {
     if (next === 'in_transit') updates.in_transit_at = now;
     if (next === 'delivered') { updates.delivered_at = now; updates.receiver_name = prompt('Receiver name?') || 'Unknown'; }
     await supabase.from('deliveries').update(updates).eq('id', d.id);
-    addToast({ type: 'success', title: 'Updated', message: `${d.delivery_number} → ${STATUS_CONFIG[next].label}` });
+    addToast({ type: 'success', title: 'Updated', message: `${d.delivery_number} -> ${STATUS_CONFIG[next].label}` });
     fetch();
   };
 
@@ -124,7 +128,7 @@ export function DeliveriesPage() {
         <div>
           <h1 className="page-title">Deliveries</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-            {stats.total} total · {stats.active} active · {stats.inTransit} in transit · {stats.completed} completed
+            {stats.total} total &middot; {stats.active} active &middot; {stats.inTransit} in transit &middot; {stats.completed} completed
           </p>
         </div>
         <button onClick={() => setCreate(true)} className="btn-primary"><Plus size={16} /> New Delivery</button>
@@ -180,9 +184,7 @@ export function DeliveriesPage() {
                       <td className="table-cell hidden md:table-cell text-xs text-slate-500">{d.from_location}</td>
                       <td className="table-cell hidden md:table-cell text-xs text-slate-500">{d.to_location}</td>
                       <td className="table-cell hidden sm:table-cell">
-                        {d.assigned_profile ? (
-                          <span className="text-xs text-slate-700 dark:text-slate-300">{d.assigned_profile.full_name}</span>
-                        ) : <span className="text-xs text-slate-400">—</span>}
+                        <span className="text-xs text-slate-400">--</span>
                       </td>
                       <td className="table-cell"><Badge variant={STATUS_CONFIG[d.status].variant}>{STATUS_CONFIG[d.status].label}</Badge></td>
                       <td className="table-cell text-right">
@@ -190,7 +192,7 @@ export function DeliveriesPage() {
                           {d.status === 'created' && (
                             <button onClick={() => setAssignOpen(d)} className="text-xs text-brand-blue-600 hover:underline">Assign</button>
                           )}
-                          {next && <button onClick={() => advance(d)} className="text-xs text-emerald-600 hover:underline">→ {STATUS_CONFIG[next].label}</button>}
+                          {next && <button onClick={() => advance(d)} className="text-xs text-emerald-600 hover:underline">Next: {STATUS_CONFIG[next].label}</button>}
                           {d.status === 'in_transit' && <button onClick={() => markFailed(d)} className="text-xs text-red-500 hover:underline">Fail</button>}
                         </div>
                       </td>
@@ -203,7 +205,6 @@ export function DeliveriesPage() {
         )}
       </div>
 
-      {/* Create modal */}
       <Modal open={createOpen} onClose={() => setCreate(false)} title="New Delivery" size="md"
         footer={<><button onClick={() => setCreate(false)} className="btn-secondary">Cancel</button><button onClick={handleCreate} disabled={saving} className="btn-primary">{saving ? <Spinner size="sm" className="text-white" /> : 'Create'}</button></>}
       >
@@ -241,7 +242,6 @@ export function DeliveriesPage() {
         </div>
       </Modal>
 
-      {/* Assign modal */}
       <Modal open={!!assignOpen} onClose={() => { setAssignOpen(null); setSelectedStaff(''); }} title="Assign Delivery" size="sm"
         footer={<><button onClick={() => { setAssignOpen(null); setSelectedStaff(''); }} className="btn-secondary">Cancel</button><button onClick={assignStaff} disabled={!selectedStaff} className="btn-primary">Assign</button></>}
       >

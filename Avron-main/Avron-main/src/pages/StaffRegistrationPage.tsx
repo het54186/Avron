@@ -72,14 +72,44 @@ export function StaffRegistrationPage() {
 
     if (signupData.user) {
       const empId = generateEmployeeId(form.role);
-      // Trigger already created the basic profile — update with full details
-      await supabase.from('profiles').update({
-        full_name: form.full_name.trim(),
-        employee_id: empId,
-        role: form.role,
-        department_id: form.department_id || null,
-        phone: form.phone.trim() || null,
-      }).eq('id', signupData.user.id);
+      // Trigger already created the basic profile — update with full details (retry up to 4 times)
+      let profileUpdated = false;
+      for (let attempt = 1; attempt <= 4; attempt++) {
+        const { error: updErr } = await supabase.from('profiles').update({
+          full_name: form.full_name.trim(),
+          employee_id: empId,
+          role: form.role,
+          department_id: form.department_id || null,
+          phone: form.phone.trim() || null,
+        }).eq('id', signupData.user.id);
+        if (!updErr) {
+          profileUpdated = true;
+          break;
+        }
+        console.warn(`Profile update attempt ${attempt} failed:`, updErr.message);
+        if (attempt < 4) {
+          await new Promise(r => setTimeout(r, attempt * 300));
+        }
+      }
+
+      if (!profileUpdated) {
+        // Fallback: upsert
+        const { error: upsertErr } = await supabase.from('profiles').upsert({
+          id: signupData.user.id,
+          full_name: form.full_name.trim(),
+          employee_id: empId,
+          role: form.role,
+          department_id: form.department_id || null,
+          phone: form.phone.trim() || null,
+          email: signupData.user.email,
+          is_active: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'id' });
+        if (upsertErr) {
+          console.error('Profile upsert failed:', upsertErr.message);
+        }
+      }
 
       await supabase.from('audit_logs').insert({
         user_id: signupData.user.id,

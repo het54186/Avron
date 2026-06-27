@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { MapPin, Building2, Users, Activity, ChevronDown, ChevronUp } from 'lucide-react';
+import { Building2, ChevronDown, ChevronUp } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { Badge } from '../components/ui/Badge';
 import { Spinner } from '../components/ui/Spinner';
@@ -51,128 +51,110 @@ export function FloorMapPage() {
     });
   };
 
-  const deptsByFloor = (floor: string) => depts.filter(d => d.floor === floor);
-
-  if (loading) return (
-    <div className="flex items-center justify-center py-20"><Spinner size="lg" /></div>
-  );
-
   return (
     <div className="space-y-5 animate-fade-in">
       <div className="page-header">
         <div>
           <h1 className="page-title">Hospital Floor Map</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-            AVRON HOSPITALS — {FLOORS.length} floors · {depts.length} departments
+            {depts.length} departments across {FLOORS.length} floors
           </p>
         </div>
       </div>
 
-      {/* Building visualizer */}
-      <div className="card p-5">
-        <div className="flex items-start gap-6">
-          <div className="hidden sm:block flex-shrink-0">
-            <img src="/assets/images/image copy copy.png" alt="Avron Hospitals" className="h-12 w-auto mb-3" />
-            <div className="flex flex-col-reverse gap-1 items-center">
-              {FLOORS.map(floor => {
-                const cfg = FLOOR_CONFIG[floor] ?? FLOOR_CONFIG['Ground Floor'];
-                const count = deptsByFloor(floor).length;
-                return (
-                  <button
-                    key={floor}
-                    onClick={() => toggle(floor)}
-                    className={cn(
-                      'w-24 h-7 rounded text-[10px] font-medium transition-all border',
-                      cfg.bg, cfg.border, cfg.color,
-                      expanded.has(floor) && 'ring-2 ring-brand-blue-400',
-                    )}
-                    title={floor}
-                  >
-                    {floor.replace(' Floor', '')} ({count})
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="flex-1 space-y-2">
-            {[...FLOORS].reverse().map(floor => {
-              const cfg = FLOOR_CONFIG[floor] ?? FLOOR_CONFIG['Ground Floor'];
-              const floorDepts = deptsByFloor(floor);
-              const isOpen = expanded.has(floor);
-              const accessVariant = ACCESS_BADGE[floor] ?? 'neutral';
-
-              return (
-                <div
-                  key={floor}
-                  className={cn('rounded-xl border transition-all overflow-hidden', cfg.border)}
+      {loading ? (
+        <div className="flex justify-center py-16"><Spinner size="lg" /></div>
+      ) : (
+        <div className="space-y-3">
+          {FLOORS.map(floor => {
+            const floorDepts = depts.filter(d => d.floor === floor);
+            const cfg = FLOOR_CONFIG[floor];
+            const open = expanded.has(floor);
+            return (
+              <div
+                key={floor}
+                className={cn(
+                  'rounded-xl border transition-all overflow-hidden',
+                  cfg.border,
+                  cfg.bg,
+                )}
+              >
+                <button
+                  onClick={() => toggle(floor)}
+                  className="w-full flex items-center justify-between px-5 py-4 text-left"
                 >
-                  <button
-                    onClick={() => toggle(floor)}
-                    className={cn(
-                      'w-full flex items-center gap-3 px-4 py-3 text-left transition-colors',
-                      cfg.bg,
-                    )}
-                  >
-                    <span className="text-lg leading-none flex-shrink-0">{cfg.icon}</span>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className={cn('text-sm font-semibold', cfg.color)}>{floor}</span>
-                        <Badge variant={accessVariant} className="text-[10px]">
-                          {accessVariant === 'danger' ? 'Restricted' :
-                           accessVariant === 'warning' ? 'Limited Access' : 'Open'}
-                        </Badge>
-                      </div>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{cfg.description}</p>
+                  <div className="flex items-center gap-3">
+                    <span className="text-xl">{cfg.icon}</span>
+                    <div>
+                      <h3 className={cn('text-sm font-semibold', cfg.color)}>{floor}</h3>
+                      <p className="text-[11px] text-slate-500 mt-0.5">{cfg.description}</p>
                     </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <div className="flex items-center gap-1 text-xs text-slate-400">
-                        <Building2 size={12} />
-                        <span>{floorDepts.length}</span>
-                      </div>
-                      {isOpen ? <ChevronUp size={16} className="text-slate-400" /> : <ChevronDown size={16} className="text-slate-400" />}
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs text-slate-400">
+                      {floorDepts.length} dept{floorDepts.length !== 1 ? 's' : ''}
+                    </span>
+                    <div className="h-6 w-6 rounded-full bg-white/50 dark:bg-slate-700/50 flex items-center justify-center">
+                      {open ? (
+                        <ChevronUp size={14} className="text-slate-500" />
+                      ) : (
+                        <ChevronDown size={14} className="text-slate-500" />
+                      )}
                     </div>
-                  </button>
+                  </div>
+                </button>
 
-                  {isOpen && floorDepts.length > 0 && (
-                    <div className="bg-white dark:bg-slate-800/50 border-t border-slate-100 dark:border-slate-700
-                                    px-4 py-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                      {floorDepts.map(d => (
-                        <div
-                          key={d.id}
-                          className="flex items-center gap-2 p-2.5 rounded-lg
-                                     bg-slate-50 dark:bg-slate-700/50 hover:bg-slate-100
-                                     dark:hover:bg-slate-700 transition-colors"
-                        >
-                          <div className={cn(
-                            'h-2 w-2 rounded-full flex-shrink-0',
-                            d.is_active ? 'bg-emerald-400' : 'bg-slate-300',
-                          )} />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate">
-                              {d.name}
-                            </p>
-                            {d.description && (
-                              <p className="text-[10px] text-slate-500 truncate">{d.description}</p>
+                {open && (
+                  <div className="px-5 pb-4">
+                    {floorDepts.length === 0 ? (
+                      <p className="text-xs text-slate-400 py-2">No departments on this floor.</p>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                        {floorDepts.map(d => (
+                          <div
+                            key={d.id}
+                            className={cn(
+                              'bg-white dark:bg-slate-800 rounded-lg border border-slate-100 dark:border-slate-700',
+                              'p-3 flex items-center justify-between',
                             )}
+                          >
+                            <div className="flex items-center gap-2">
+                              <div className="h-7 w-7 rounded-lg bg-slate-100 dark:bg-slate-700 flex items-center justify-center flex-shrink-0">
+                                <Building2 size={13} className="text-slate-500" />
+                              </div>
+                              <div>
+                                <p className="text-sm font-medium text-slate-800 dark:text-slate-200">{d.name}</p>
+                                <p className="text-[10px] text-slate-400">{d.description || 'No description'}</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <Badge
+                                variant={d.is_active ? 'success' : 'neutral'}
+                                dot
+                                className="text-[10px]"
+                              >
+                                {d.is_active ? 'Active' : 'Inactive'}
+                              </Badge>
+                              {ACCESS_BADGE[floor] && (
+                                <Badge
+                                  variant={ACCESS_BADGE[floor]}
+                                  className="text-[10px]"
+                                >
+                                  {floor}
+                                </Badge>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {isOpen && floorDepts.length === 0 && (
-                    <div className="bg-white dark:bg-slate-800/50 border-t border-slate-100 dark:border-slate-700
-                                    px-4 py-3 text-xs text-slate-400 text-center">
-                      No departments mapped to this floor
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
-      </div>
+      )}
     </div>
   );
 }

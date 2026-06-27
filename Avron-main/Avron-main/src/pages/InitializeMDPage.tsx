@@ -31,15 +31,18 @@ export function InitializeMDPage() {
 
   useEffect(() => {
     const checkMD = async () => {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('role', 'md')
-        .eq('is_active', true)
-        .limit(1);
-
-      if (!error && data && data.length > 0) {
-        setMdExists(true);
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('role', 'md')
+          .eq('is_active', true)
+          .limit(1);
+        if (!error && data && data.length > 0) {
+          setMdExists(true);
+        }
+      } catch (e) {
+        console.error('MD check error:', e);
       }
       setChecking(false);
     };
@@ -127,21 +130,46 @@ export function InitializeMDPage() {
         // Avatar upload failed, continue without
       }
 
-      // Trigger already created the basic profile — update with full details
-      const { error: profileErr } = await supabase.from('profiles').update({
-        full_name: form.full_name.trim(),
-        employee_id: empId,
-        role: 'md',
-        department_id: null,
-        phone: form.phone.trim(),
-        avatar_url: avatarUrl,
-        is_active: true,
-      }).eq('id', signupData.user.id);
+      // Retry profile update up to 4 times with delays
+      let profileUpdated = false;
+      for (let attempt = 1; attempt <= 4; attempt++) {
+        const { error: profileErr } = await supabase.from('profiles').update({
+          full_name: form.full_name.trim(),
+          employee_id: empId,
+          role: 'md',
+          department_id: null,
+          phone: form.phone.trim(),
+          avatar_url: avatarUrl,
+          is_active: true,
+        }).eq('id', signupData.user.id);
 
-      if (profileErr) {
-        setLoading(false);
-        setError('Failed to create profile. Please contact support.');
-        return;
+        if (!profileErr) {
+          profileUpdated = true;
+          break;
+        }
+        console.warn(`Profile update attempt ${attempt} failed:`, profileErr.message);
+        if (attempt < 4) {
+          await new Promise(r => setTimeout(r, attempt * 300));
+        }
+      }
+
+      if (!profileUpdated) {
+        // Fallback: upsert
+        const { error: upsertErr } = await supabase.from('profiles').upsert({
+          id: signupData.user.id,
+          full_name: form.full_name.trim(),
+          employee_id: empId,
+          role: 'md',
+          phone: form.phone.trim(),
+          avatar_url: avatarUrl,
+          is_active: true,
+          email: signupData.user.email,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'id' });
+        if (upsertErr) {
+          console.error('Profile upsert failed:', upsertErr.message);
+        }
       }
 
       await supabase.from('audit_logs').insert({
@@ -161,6 +189,9 @@ export function InitializeMDPage() {
       setCreatedEmployee(empId);
       setLoading(false);
       setStep('done');
+    } else {
+      setLoading(false);
+      setError('Failed to create user account. Please try again.');
     }
   };
 
@@ -228,7 +259,6 @@ export function InitializeMDPage() {
 
   return (
     <div className="min-h-screen flex">
-      {/* Left panel */}
       <div className="hidden lg:flex lg:w-[45%] relative overflow-hidden bg-gradient-to-br from-slate-900 via-brand-blue-950 to-slate-900">
         <div className="absolute inset-0 opacity-10"
           style={{
@@ -275,10 +305,8 @@ export function InitializeMDPage() {
         </div>
       </div>
 
-      {/* Right - form */}
       <div className="flex-1 flex items-center justify-center p-6 bg-white dark:bg-slate-900 overflow-y-auto">
         <div className="w-full max-w-[420px] py-8">
-          {/* Mobile logo */}
           <div className="flex items-center gap-2 mb-6 lg:hidden">
             <img src="/assets/images/image copy copy.png" alt="Logo" className="h-9 w-auto" />
             <div>
@@ -305,7 +333,6 @@ export function InitializeMDPage() {
           </div>
 
           <form onSubmit={handleInitialize} className="space-y-4">
-            {/* Profile Photo */}
             <div className="flex items-center gap-4">
               <div className="relative">
                 {avatarPreview ? (
@@ -326,87 +353,46 @@ export function InitializeMDPage() {
               </div>
             </div>
 
-            {/* Full Name */}
             <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                Full Name *
-              </label>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Full Name *</label>
               <div className="relative">
                 <User size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  value={form.full_name}
-                  onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))}
-                  placeholder="Dr. John Doe"
-                  className="input-field pl-10"
-                  disabled={loading}
-                />
+                <input type="text" value={form.full_name} onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))}
+                  placeholder="Dr. John Doe" className="input-field pl-10" disabled={loading} />
               </div>
             </div>
 
-            {/* Email */}
             <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                Email Address *
-              </label>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Email Address *</label>
               <div className="relative">
                 <Mail size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="email"
-                  value={form.email}
-                  onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
-                  placeholder="md@avronhospitals.com"
-                  className="input-field pl-10"
-                  disabled={loading}
-                />
+                <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                  placeholder="md@avronhospitals.com" className="input-field pl-10" disabled={loading} />
               </div>
             </div>
 
-            {/* Phone */}
             <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                Mobile Number *
-              </label>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Mobile Number *</label>
               <div className="relative">
                 <Phone size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="tel"
-                  value={form.phone}
-                  onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
-                  placeholder="+91 98765 43210"
-                  className="input-field pl-10"
-                  disabled={loading}
-                />
+                <input type="tel" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
+                  placeholder="+91 98765 43210" className="input-field pl-10" disabled={loading} />
               </div>
             </div>
 
-            {/* DOB & Gender */}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                  Date of Birth *
-                </label>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Date of Birth *</label>
                 <div className="relative">
                   <Calendar size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input
-                    type="date"
-                    value={form.dob}
-                    onChange={e => setForm(f => ({ ...f, dob: e.target.value }))}
-                    className="input-field pl-10"
-                    disabled={loading}
-                  />
+                  <input type="date" value={form.dob} onChange={e => setForm(f => ({ ...f, dob: e.target.value }))}
+                    className="input-field pl-10" disabled={loading} />
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                  Gender *
-                </label>
-                <select
-                  value={form.gender}
-                  onChange={e => setForm(f => ({ ...f, gender: e.target.value as Gender }))}
-                  className="input-field"
-                  disabled={loading}
-                >
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Gender *</label>
+                <select value={form.gender} onChange={e => setForm(f => ({ ...f, gender: e.target.value as Gender }))}
+                  className="input-field" disabled={loading}>
                   <option value="">Select...</option>
                   <option value="male">Male</option>
                   <option value="female">Female</option>
@@ -415,73 +401,44 @@ export function InitializeMDPage() {
               </div>
             </div>
 
-            {/* Password */}
             <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                Password *
-              </label>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Password *</label>
               <div className="relative">
                 <Lock size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type={showPw ? 'text' : 'password'}
-                  value={form.password}
+                <input type={showPw ? 'text' : 'password'} value={form.password}
                   onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
-                  placeholder="Min 8 chars, 1 uppercase, 1 number"
-                  className="input-field pl-10 pr-10"
-                  disabled={loading}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPw(s => !s)}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
-                  tabIndex={-1}
-                >
+                  placeholder="Min 8 chars, 1 uppercase, 1 number" className="input-field pl-10 pr-10" disabled={loading} />
+                <button type="button" onClick={() => setShowPw(s => !s)}
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors" tabIndex={-1}>
                   {showPw ? <EyeOff size={15} /> : <Eye size={15} />}
                 </button>
               </div>
             </div>
 
-            {/* Confirm Password */}
             <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                Confirm Password *
-              </label>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Confirm Password *</label>
               <div className="relative">
                 <Lock size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="password"
-                  value={form.confirm_password}
+                <input type="password" value={form.confirm_password}
                   onChange={e => setForm(f => ({ ...f, confirm_password: e.target.value }))}
-                  placeholder="Repeat password"
-                  className="input-field pl-10"
-                  disabled={loading}
-                />
+                  placeholder="Repeat password" className="input-field pl-10" disabled={loading} />
               </div>
             </div>
 
             {error && (
-              <div className="flex items-start gap-2 bg-brand-red-50 dark:bg-brand-red-900/20
-                              border border-brand-red-200 dark:border-brand-red-800
-                              text-brand-red-700 dark:text-brand-red-400
-                              text-sm rounded-lg px-4 py-3">
+              <div className="flex items-start gap-2 bg-brand-red-50 dark:bg-brand-red-900/20 border border-brand-red-200 dark:border-brand-red-800 text-brand-red-700 dark:text-brand-red-400 text-sm rounded-lg px-4 py-3">
                 <span className="mt-0.5">!</span>
                 <span>{error}</span>
               </div>
             )}
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="btn-primary w-full h-11 text-base mt-2"
-            >
+            <button type="submit" disabled={loading} className="btn-primary w-full h-11 text-base mt-2">
               {loading ? <Spinner size="sm" className="text-white" /> : 'Initialize MD Account'}
             </button>
           </form>
 
-          <button
-            onClick={() => navigate('login')}
-            className="mt-4 flex items-center gap-2 text-sm text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors mx-auto"
-          >
+          <button onClick={() => navigate('login')}
+            className="mt-4 flex items-center gap-2 text-sm text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors mx-auto">
             <ArrowLeft size={14} /> Back to login
           </button>
         </div>

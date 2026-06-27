@@ -209,7 +209,8 @@ export type AppRoute =
   | 'tickets' | 'ticket-detail'
   | 'pharmacy' | 'radiology' | 'lab' | 'chemo'
   | 'media' | 'deliveries'
-  | 'assets';
+  | 'assets'
+  | 'beds';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
