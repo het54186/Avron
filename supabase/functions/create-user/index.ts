@@ -28,7 +28,6 @@ Deno.serve(async (req: Request) => {
       return respond({ error: "Server configuration error. Missing required environment variables." }, 500);
     }
 
-    // Verify requesting user
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) return respond({ error: "Unauthorized: No authorization header provided" }, 401);
 
@@ -41,7 +40,6 @@ Deno.serve(async (req: Request) => {
       return respond({ error: "Unauthorized: Invalid session" }, 401);
     }
 
-    // Use admin client to check caller role
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
     const { data: callerProfile } = await adminClient
       .from("profiles")
@@ -61,12 +59,10 @@ Deno.serve(async (req: Request) => {
       return respond({ error: "Missing required fields: email, password, full_name, role" }, 400);
     }
 
-    // MD can only be created by MD
     if (role === "md" && callerProfile.role !== "md") {
       return respond({ error: "Only a Medical Director can create another MD account" }, 403);
     }
 
-    // Create user with Admin API
     const { data: newUserData, error: createErr } = await adminClient.auth.admin.createUser({
       email: email.trim().toLowerCase(),
       password,
@@ -86,7 +82,6 @@ Deno.serve(async (req: Request) => {
       return respond({ error: "Failed to create user account: no user data returned" }, 500);
     }
 
-    // Retry profile update up to 3 times with delays
     let profileUpdated = false;
     let profileErr = null;
     for (let attempt = 1; attempt <= 3; attempt++) {
@@ -109,7 +104,6 @@ Deno.serve(async (req: Request) => {
     }
 
     if (!profileUpdated) {
-      // Fallback to upsert
       const { error: upsertErr } = await adminClient.from("profiles").upsert({
         id: newUserData.user.id,
         full_name: full_name.trim(),
@@ -127,7 +121,6 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // Log audit
     await adminClient.from("audit_logs").insert({
       user_id: callerUser.id,
       action: "create",
