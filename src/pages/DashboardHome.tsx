@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Users, Building2, BedDouble, Activity, Clock, ArrowUpRight, Ticket, FileImage, Package, FlaskConical, Stethoscope, Pill, ClipboardList, Truck, Wrench, ChartBar as BarChart3 } from 'lucide-react';
+import { Users, Building2, BedDouble, Activity, Clock, ArrowUpRight, Ticket, FileImage, Package, FlaskConical, Stethoscope, Pill, ClipboardList, Truck, Wrench, BarChart3 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useRouter } from '../contexts/RouterContext';

@@ -29,6 +29,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // Verify requesting user
+    // Verify requesting user
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) return respond({ error: "Unauthorized: No authorization header provided" }, 401);
 
@@ -40,6 +41,7 @@ Deno.serve(async (req: Request) => {
       console.error("Caller auth error:", callerErr?.message);
       return respond({ error: "Unauthorized: Invalid session" }, 401);
     }
+    // Use admin client to check caller role
 
     // Use admin client to check caller role
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
@@ -59,10 +61,12 @@ Deno.serve(async (req: Request) => {
 
     if (!email || !password || !full_name || !role) {
       return respond({ error: "Missing required fields: email, password, full_name, role" }, 400);
+    // MD can only be created by MD
     }
 
     // MD can only be created by MD
     if (role === "md" && callerProfile.role !== "md") {
+    // Create user with Admin API
       return respond({ error: "Only a Medical Director can create another MD account" }, 403);
     }
 
@@ -82,6 +86,7 @@ Deno.serve(async (req: Request) => {
       return respond({ error: `Failed to create user: ${createErr.message}` }, 400);
     }
 
+    // Retry profile update up to 3 times with delays
     if (!newUserData || !newUserData.user) {
       return respond({ error: "Failed to create user account: no user data returned" }, 500);
     }
@@ -104,6 +109,7 @@ Deno.serve(async (req: Request) => {
       profileErr = updErr;
       console.warn(`Profile update attempt ${attempt} failed:`, updErr.message);
       if (attempt < 3) {
+      // Fallback to upsert
         await new Promise(r => setTimeout(r, attempt * 500));
       }
     }
@@ -121,6 +127,7 @@ Deno.serve(async (req: Request) => {
         is_active: true,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
+    // Log audit
       }, { onConflict: "id" });
       if (upsertErr) {
         console.error("Profile upsert failed:", upsertErr.message);
